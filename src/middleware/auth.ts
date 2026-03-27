@@ -17,7 +17,7 @@ export function requireAuth(req: AuthedRequest, res: Response, next: NextFunctio
   try {
     const payload = verifyToken(token);
     const user = getUserById(payload.sub);
-    if (!user) {
+    if (!user || user.deletedAt) {
       res.status(401).json({ error: "User not found" });
       return;
     }

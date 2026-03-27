@@ -251,3 +251,370 @@ describe("POST /api/tournaments/:id/bracket", () => {
     expect(res.body.roundCount).toBe(1);
   });
 });
+
+describe("POST /api/users", () => {
+  it("creates a player profile with required fields and returns 201", async () => {
+    const app = createApp();
+    const res = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6", "Tekken 8"],
+      region: "Pittsburgh",
+    });
+
+    expect(res.status).toBe(201);
+    expect(typeof res.body.token).toBe("string");
+    expect(res.body.user).toMatchObject({
+      username: "andre",
+      email: "andre@test.local",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6", "Tekken 8"],
+      region: "Pittsburgh",
+      role: "player",
+    });
+    expect(typeof res.body.user.id).toBe("string");
+  });
+
+  it("returns 400 when required profile fields are missing", async () => {
+    const app = createApp();
+    const res = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when games array is empty", async () => {
+    const app = createApp();
+    const res = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre Miller",
+      games: [],
+      region: "Pittsburgh",
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 409 for duplicate email (case-insensitive)", async () => {
+    const app = createApp();
+    await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6"],
+      region: "Pittsburgh",
+    });
+
+    const dup = await request(app).post("/api/users").send({
+      username: "andre-two",
+      email: "Andre@Test.Local",
+      password: "password123",
+      displayName: "Andre Two",
+      games: ["Tekken 8"],
+      region: "Western PA",
+    });
+
+    expect(dup.status).toBe(409);
+  });
+
+  it("returns 409 for duplicate username (case-insensitive)", async () => {
+    const app = createApp();
+    await request(app).post("/api/users").send({
+      username: "AndRe",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6"],
+      region: "Pittsburgh",
+    });
+
+    const dup = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre-two@test.local",
+      password: "password123",
+      displayName: "Andre Two",
+      games: ["Tekken 8"],
+      region: "Western PA",
+    });
+
+    expect(dup.status).toBe(409);
+  });
+});
+
+describe("GET /api/users/:id", () => {
+  it("returns public profile without requiring authentication", async () => {
+    const app = createApp();
+    const created = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6", "Tekken 8"],
+      region: "Pittsburgh",
+    });
+
+    const id = created.body.user.id as string;
+    const res = await request(app).get(`/api/users/${id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id,
+      username: "andre",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6", "Tekken 8"],
+      region: "Pittsburgh",
+      role: "player",
+    });
+    expect(res.body.email).toBeUndefined();
+    expect(res.body.passwordHash).toBeUndefined();
+  });
+
+  it("returns 404 for non-existent ids", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/users/00000000-0000-4000-8000-000000000000");
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("PATCH /api/users/:id", () => {
+  it("returns 401 when not authenticated", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .patch("/api/users/00000000-0000-4000-8000-000000000000")
+      .send({ displayName: "New Name" });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 when updating another user profile", async () => {
+    const app = createApp();
+    const owner = await request(app).post("/api/users").send({
+      username: "owner",
+      email: "owner@test.local",
+      password: "password123",
+      displayName: "Owner",
+      games: ["Street Fighter 6"],
+      region: "Pittsburgh",
+    });
+    const other = await request(app).post("/api/users").send({
+      username: "other",
+      email: "other@test.local",
+      password: "password123",
+      displayName: "Other",
+      games: ["Tekken 8"],
+      region: "Western PA",
+    });
+
+    const res = await request(app)
+      .patch(`/api/users/${other.body.user.id as string}`)
+      .set("Authorization", `Bearer ${owner.body.token as string}`)
+      .send({ displayName: "Hacked" });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("updates only provided profile fields for the authenticated owner", async () => {
+    const app = createApp();
+    const created = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6"],
+      region: "Pittsburgh",
+    });
+
+    const id = created.body.user.id as string;
+    const token = created.body.token as string;
+    const res = await request(app)
+      .patch(`/api/users/${id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        games: ["Street Fighter 6", "2XKO"],
+        region: "Western PA",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id,
+      username: "andre",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6", "2XKO"],
+      region: "Western PA",
+      role: "player",
+    });
+    expect(res.body.email).toBeUndefined();
+  });
+
+  it("returns 400 when patch body is empty", async () => {
+    const app = createApp();
+    const created = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6"],
+      region: "Pittsburgh",
+    });
+
+    const id = created.body.user.id as string;
+    const token = created.body.token as string;
+    const res = await request(app)
+      .patch(`/api/users/${id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 409 if updating username to an existing username", async () => {
+    const app = createApp();
+    const first = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre",
+      games: ["Street Fighter 6"],
+      region: "Pittsburgh",
+    });
+    const second = await request(app).post("/api/users").send({
+      username: "sam",
+      email: "sam@test.local",
+      password: "password123",
+      displayName: "Sam",
+      games: ["Tekken 8"],
+      region: "Western PA",
+    });
+
+    const res = await request(app)
+      .patch(`/api/users/${second.body.user.id as string}`)
+      .set("Authorization", `Bearer ${second.body.token as string}`)
+      .send({ username: "AnDrE" });
+
+    expect(res.status).toBe(409);
+    expect(first.status).toBe(201);
+  });
+
+  it("returns 400 when attempting to patch email (immutable for MVP)", async () => {
+    const app = createApp();
+    const created = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre",
+      games: ["Street Fighter 6"],
+      region: "Pittsburgh",
+    });
+
+    const res = await request(app)
+      .patch(`/api/users/${created.body.user.id as string}`)
+      .set("Authorization", `Bearer ${created.body.token as string}`)
+      .send({ email: "new-email@test.local" });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("DELETE /api/users/:id", () => {
+  it("soft-deletes own profile and makes it inaccessible", async () => {
+    const app = createApp();
+    const created = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre",
+      games: ["Street Fighter 6"],
+      region: "Pittsburgh",
+    });
+
+    const id = created.body.user.id as string;
+    const token = created.body.token as string;
+
+    const delRes = await request(app)
+      .delete(`/api/users/${id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(delRes.status).toBe(204);
+
+    const getRes = await request(app).get(`/api/users/${id}`);
+    expect(getRes.status).toBe(404);
+
+    const active = await request(app).post("/api/users").send({
+      username: "active",
+      email: "active@test.local",
+      password: "password123",
+      displayName: "Active User",
+      games: ["Tekken 8"],
+      region: "Western PA",
+    });
+
+    const patchRes = await request(app)
+      .patch(`/api/users/${id}`)
+      .set("Authorization", `Bearer ${active.body.token as string}`)
+      .send({ region: "Nowhere" });
+    expect(patchRes.status).toBe(404);
+  });
+
+  it("returns 403 when trying to delete another user", async () => {
+    const app = createApp();
+    const owner = await request(app).post("/api/users").send({
+      username: "owner",
+      email: "owner@test.local",
+      password: "password123",
+      displayName: "Owner",
+      games: ["Street Fighter 6"],
+      region: "Pittsburgh",
+    });
+    const other = await request(app).post("/api/users").send({
+      username: "other",
+      email: "other@test.local",
+      password: "password123",
+      displayName: "Other",
+      games: ["Tekken 8"],
+      region: "Western PA",
+    });
+
+    const res = await request(app)
+      .delete(`/api/users/${other.body.user.id as string}`)
+      .set("Authorization", `Bearer ${owner.body.token as string}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("allows reusing username and email after soft delete", async () => {
+    const app = createApp();
+    const created = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre",
+      games: ["Street Fighter 6"],
+      region: "Pittsburgh",
+    });
+
+    const id = created.body.user.id as string;
+    const token = created.body.token as string;
+
+    const delRes = await request(app)
+      .delete(`/api/users/${id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(delRes.status).toBe(204);
+
+    const recreated = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre Reborn",
+      games: ["Tekken 8"],
+      region: "Western PA",
+    });
+
+    expect(recreated.status).toBe(201);
+  });
+});
