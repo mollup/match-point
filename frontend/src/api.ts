@@ -1,5 +1,14 @@
 export type UserRole = "organizer" | "player";
 
+export interface UserProfile {
+  id: string;
+  username?: string;
+  displayName: string;
+  games: string[];
+  region?: string;
+  createdAt: string;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -164,5 +173,20 @@ export const api = {
       throw new Error(errorMessage(data, res.status));
     }
     return data as BracketResponse;
+  },
+
+  getUser(id: string): Promise<UserProfile> {
+    return request(`/api/users/${id}`, { auth: false });
+  },
+
+  patchUser(
+    id: string,
+    body: { displayName?: string; games?: string[]; region?: string }
+  ): Promise<UserProfile> {
+    return request(`/api/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      headers: jsonHeaders,
+    });
   },
 };
