@@ -165,7 +165,18 @@ export function DashboardLayout({ children }: { children?: ReactNode }) {
             </div>
           ) : null}
           <div className="dashboard-user">
-            <div className="dashboard-user-avatar">{initials}</div>
+            {isGuest ? (
+              <div className="dashboard-user-avatar">{initials}</div>
+            ) : (
+              <Link
+                to={`/players/${user!.id}`}
+                className="dashboard-user-avatar dashboard-user-avatar-link"
+                aria-label="Open my profile"
+                onClick={closeSidebar}
+              >
+                {initials}
+              </Link>
+            )}
             <div>
               <div className="dashboard-user-name">{isGuest ? "Guest" : user!.displayName}</div>
               <div className="dashboard-user-role">{roleLabel}</div>

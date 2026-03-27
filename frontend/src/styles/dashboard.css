@@ -152,6 +152,21 @@
   font-size: 0.85rem;
 }
 
+.dashboard-user-avatar-link {
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.dashboard-user-avatar-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+}
+
+.dashboard-user-avatar-link:focus-visible {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
 .dashboard-user-name {
   font-weight: 600;
   font-size: 0.875rem;

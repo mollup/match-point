@@ -304,76 +304,6 @@ describe("POST /api/tournaments/:id/register", () => {
       .post(`/api/tournaments/${tid}/register`)
       .set("Authorization", `Bearer ${token}`)
       .send({ displayName: "MKLeo", gameSelection: "Street Fighter 6" });
-describe("POST /api/users", () => {
-  it("creates a player profile with required fields and returns 201", async () => {
-    const app = createApp();
-    const res = await request(app).post("/api/users").send({
-      username: "andre",
-      email: "andre@test.local",
-      password: "password123",
-      displayName: "Andre Miller",
-      games: ["Street Fighter 6", "Tekken 8"],
-      region: "Pittsburgh",
-    });
-
-    expect(res.status).toBe(201);
-    expect(typeof res.body.token).toBe("string");
-    expect(res.body.user).toMatchObject({
-      username: "andre",
-      email: "andre@test.local",
-      displayName: "Andre Miller",
-      games: ["Street Fighter 6", "Tekken 8"],
-      region: "Pittsburgh",
-      role: "player",
-    });
-    expect(typeof res.body.user.id).toBe("string");
-  });
-
-  it("returns 400 when required profile fields are missing", async () => {
-    const app = createApp();
-    const res = await request(app).post("/api/users").send({
-      username: "andre",
-      email: "andre@test.local",
-      password: "password123",
-    });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("returns 400 when games array is empty", async () => {
-    const app = createApp();
-    const res = await request(app).post("/api/users").send({
-      username: "andre",
-      email: "andre@test.local",
-      password: "password123",
-      displayName: "Andre Miller",
-      games: [],
-      region: "Pittsburgh",
-    });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("returns 409 for duplicate email (case-insensitive)", async () => {
-    const app = createApp();
-    await request(app).post("/api/users").send({
-      username: "andre",
-      email: "andre@test.local",
-      password: "password123",
-      displayName: "Andre Miller",
-      games: ["Street Fighter 6"],
-      region: "Pittsburgh",
-    });
-
-    const dup = await request(app).post("/api/users").send({
-      username: "andre-two",
-      email: "Andre@Test.Local",
-      password: "password123",
-      displayName: "Andre Two",
-      games: ["Tekken 8"],
-      region: "Western PA",
-    });
-
     expect(dup.status).toBe(409);
   });
 
@@ -496,6 +426,103 @@ describe("POST /api/users", () => {
   });
 });
 
+describe("POST /api/users", () => {
+  it("creates a player profile with required fields and returns 201", async () => {
+    const app = createApp();
+    const res = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6", "Tekken 8"],
+      region: "Pittsburgh",
+    });
+
+    expect(res.status).toBe(201);
+    expect(typeof res.body.token).toBe("string");
+    expect(res.body.user).toMatchObject({
+      username: "andre",
+      email: "andre@test.local",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6", "Tekken 8"],
+      region: "Pittsburgh",
+      role: "player",
+    });
+    expect(typeof res.body.user.id).toBe("string");
+  });
+
+  it("returns 400 when required profile fields are missing", async () => {
+    const app = createApp();
+    const res = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when games array is empty", async () => {
+    const app = createApp();
+    const res = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre Miller",
+      games: [],
+      region: "Pittsburgh",
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 409 for duplicate email (case-insensitive)", async () => {
+    const app = createApp();
+    await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6"],
+      region: "Pittsburgh",
+    });
+
+    const dup = await request(app).post("/api/users").send({
+      username: "andre-two",
+      email: "Andre@Test.Local",
+      password: "password123",
+      displayName: "Andre Two",
+      games: ["Tekken 8"],
+      region: "Western PA",
+    });
+
+    expect(dup.status).toBe(409);
+  });
+
+  it("returns 409 for duplicate username (case-insensitive)", async () => {
+    const app = createApp();
+    await request(app).post("/api/users").send({
+      username: "AndRe",
+      email: "andre@test.local",
+      password: "password123",
+      displayName: "Andre Miller",
+      games: ["Street Fighter 6"],
+      region: "Pittsburgh",
+    });
+
+    const dup = await request(app).post("/api/users").send({
+      username: "andre",
+      email: "andre-two@test.local",
+      password: "password123",
+      displayName: "Andre Two",
+      games: ["Tekken 8"],
+      region: "Western PA",
+    });
+
+    expect(dup.status).toBe(409);
+  });
+});
+
 /* ================================================================== */
 /*  Entrant List – GET /api/tournaments/:id/entrants                  */
 /* ================================================================== */
@@ -551,29 +578,6 @@ describe("GET /api/tournaments/:id/entrants", () => {
     const app = createApp();
     const res = await request(app).get("/api/tournaments/fake-id/entrants");
     expect(res.status).toBe(404);
-  });
-});
-  it("returns 409 for duplicate username (case-insensitive)", async () => {
-    const app = createApp();
-    await request(app).post("/api/users").send({
-      username: "AndRe",
-      email: "andre@test.local",
-      password: "password123",
-      displayName: "Andre Miller",
-      games: ["Street Fighter 6"],
-      region: "Pittsburgh",
-    });
-
-    const dup = await request(app).post("/api/users").send({
-      username: "andre",
-      email: "andre-two@test.local",
-      password: "password123",
-      displayName: "Andre Two",
-      games: ["Tekken 8"],
-      region: "Western PA",
-    });
-
-    expect(dup.status).toBe(409);
   });
 });
 

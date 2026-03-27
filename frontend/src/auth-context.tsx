@@ -37,18 +37,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const t = localStorage.getItem(TOKEN_KEY);
-    const u = localStorage.getItem(USER_KEY);
-    if (t && u) {
-      try {
-        setToken(t);
-        setUser(JSON.parse(u) as AuthUser);
-      } catch {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
+    let cancelled = false;
+
+    const hydrate = async () => {
+      const t = localStorage.getItem(TOKEN_KEY);
+      const u = localStorage.getItem(USER_KEY);
+      if (t && u) {
+        try {
+          const parsedUser = JSON.parse(u) as AuthUser;
+          setToken(t);
+          setUser(parsedUser);
+
+          // If backend memory was reset, cached sessions can point to missing users.
+          // Clear only this known-stale case so UI redirects to a clean login/register flow.
+          try {
+            await api.getUser(parsedUser.id);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "";
+            if (msg === "User not found") {
+              if (!cancelled) {
+                setToken(null);
+                setUser(null);
+              }
+              localStorage.removeItem(TOKEN_KEY);
+              localStorage.removeItem(USER_KEY);
+              setStoredToken(null);
+            }
+          }
+        } catch {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USER_KEY);
+          setStoredToken(null);
+        }
       }
-    }
-    setReady(true);
+      if (!cancelled) setReady(true);
+    };
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const persistSession = useCallback((t: string, u: AuthUser) => {
