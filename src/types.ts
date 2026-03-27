@@ -2,9 +2,22 @@ export type UserRole = "organizer" | "player";
 
 export interface User {
   id: string;
+  username: string;
   email: string;
   passwordHash: string;
   displayName: string;
+  games: string[];
+  region: string;
+  deletedAt?: string;
+  role: UserRole;
+}
+
+export interface PublicUserProfile {
+  id: string;
+  username: string;
+  displayName: string;
+  games: string[];
+  region: string;
   role: UserRole;
 }
 

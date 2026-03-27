@@ -1,38 +1,116 @@
 import { randomUUID } from "crypto";
-import type { BracketResponse, Entrant, Tournament, User, UserRole } from "./types.js";
+import type {
+  BracketResponse,
+  Entrant,
+  PublicUserProfile,
+  Tournament,
+  User,
+  UserRole,
+} from "./types.js";
 
 const users = new Map<string, User>();
 const usersByEmail = new Map<string, string>();
+const usersByUsername = new Map<string, string>();
 const tournaments = new Map<string, Tournament>();
 const entrantsByTournament = new Map<string, Entrant[]>();
 const bracketsByTournament = new Map<string, BracketResponse>();
 
 export function createUser(input: {
+  username?: string;
   email: string;
   passwordHash: string;
   displayName: string;
+  games?: string[];
+  region?: string;
   role: UserRole;
 }): User {
   const id = randomUUID();
+  const username = (input.username ?? input.displayName).trim();
   const user: User = {
     id,
+    username,
     email: input.email.toLowerCase(),
     passwordHash: input.passwordHash,
     displayName: input.displayName,
+    games: input.games ?? [],
+    region: input.region ?? "",
     role: input.role,
   };
   users.set(id, user);
   usersByEmail.set(user.email, id);
+  usersByUsername.set(user.username.toLowerCase(), id);
   return user;
 }
 
 export function findUserByEmail(email: string): User | undefined {
   const id = usersByEmail.get(email.toLowerCase());
-  return id ? users.get(id) : undefined;
+  const user = id ? users.get(id) : undefined;
+  if (!user || user.deletedAt) return undefined;
+  return user;
 }
 
 export function getUserById(id: string): User | undefined {
   return users.get(id);
+}
+
+export function findUserByUsername(username: string): User | undefined {
+  const id = usersByUsername.get(username.toLowerCase());
+  return id ? users.get(id) : undefined;
+}
+
+export function isEmailTaken(email: string): boolean {
+  return usersByEmail.has(email.toLowerCase());
+}
+
+export function isUsernameTaken(username: string): boolean {
+  return usersByUsername.has(username.toLowerCase());
+}
+
+export function softDeleteUser(id: string): User | undefined {
+  const user = users.get(id);
+  if (!user || user.deletedAt) return undefined;
+
+  user.deletedAt = new Date().toISOString();
+  usersByEmail.delete(user.email.toLowerCase());
+  usersByUsername.delete(user.username.toLowerCase());
+  users.set(user.id, user);
+  return user;
+}
+
+export function updateUserProfile(
+  id: string,
+  patch: {
+    username?: string;
+    displayName?: string;
+    games?: string[];
+    region?: string;
+  }
+): User | undefined {
+  const user = users.get(id);
+  if (!user || user.deletedAt) return undefined;
+
+  if (patch.username && patch.username !== user.username) {
+    usersByUsername.delete(user.username.toLowerCase());
+    user.username = patch.username;
+    usersByUsername.set(user.username.toLowerCase(), user.id);
+  }
+  if (typeof patch.displayName === "string") user.displayName = patch.displayName;
+  if (Array.isArray(patch.games)) user.games = [...patch.games];
+  if (typeof patch.region === "string") user.region = patch.region;
+
+  users.set(user.id, user);
+  return user;
+}
+
+export function toPublicUserProfile(user: User): PublicUserProfile {
+  return {
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    games: [...user.games],
+    region: user.region,
+    role: user.role,
+  };
 }
 
 export function createTournament(input: {
@@ -100,6 +178,7 @@ export function getTournamentBracket(tournamentId: string): BracketResponse | un
 export function __resetStoreForTests(): void {
   users.clear();
   usersByEmail.clear();
+  usersByUsername.clear();
   tournaments.clear();
   entrantsByTournament.clear();
   bracketsByTournament.clear();

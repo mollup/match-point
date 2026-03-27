@@ -4,6 +4,7 @@ import cors from "cors";
 import express from "express";
 import authRoutes from "./routes/auth.js";
 import tournamentRoutes from "./routes/tournaments.js";
+import userRoutes from "./routes/users.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,6 +24,7 @@ export function createApp() {
 
   app.use("/api/auth", authRoutes);
   app.use("/api/tournaments", tournamentRoutes);
+  app.use("/api/users", userRoutes);
 
   const isProd = process.env.NODE_ENV === "production";
   if (isProd) {
