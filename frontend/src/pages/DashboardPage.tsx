@@ -4,7 +4,7 @@ import { ArrowUp, CalendarDays, Plus, SearchX, UserPlus, Wallet } from "lucide-r
 import { api, type TournamentSummary } from "../api";
 import { useAuth } from "../auth-context";
 
-function formatDateRange(): string {
+export function formatDateRange(): string {
   const end = new Date();
   const start = new Date(end);
   start.setDate(end.getDate() - 7);
