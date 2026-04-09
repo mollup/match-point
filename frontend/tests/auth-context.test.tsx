@@ -1,8 +1,10 @@
 /**
  * Tests for frontend/src/auth-context.tsx
  *
- * Covers: AuthProvider hydration (restores/clears session), login, register,
- * logout, and the useAuth hook guard.
+ * Covers: AuthProvider hydration (restores/clears session, getUser revalidation,
+ * stale User not found vs other errors, partial/corrupt localStorage), login,
+ * register (including mp_user / setStoredToken), logout, and the useAuth hook
+ * guard.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, waitFor } from "@testing-library/react";
@@ -82,6 +84,25 @@ describe("AuthProvider – hydration", () => {
     wrap(<TestConsumer />);
     await waitFor(() => expect(screen.getByTestId("user").textContent).toBe("guest"));
     expect(localStorage.getItem("mp_token")).toBeNull();
+    expect(vi.mocked(setStoredToken)).toHaveBeenCalledWith(null);
+  });
+
+  it("keeps the cached session when getUser fails for a reason other than User not found", async () => {
+    const mockUser = { id: "1", email: "a@b.com", displayName: "Alice", role: "player" as const };
+    localStorage.setItem("mp_token", "stored-token");
+    localStorage.setItem("mp_user", JSON.stringify(mockUser));
+    vi.mocked(api.getUser).mockRejectedValue(new Error("Network error"));
+
+    wrap(<TestConsumer />);
+    await waitFor(() => expect(screen.getByTestId("user").textContent).toBe("Alice"));
+    expect(localStorage.getItem("mp_token")).toBe("stored-token");
+  });
+
+  it("ignores partial localStorage (token without user) and stays guest", async () => {
+    localStorage.setItem("mp_token", "orphan-token");
+    wrap(<TestConsumer />);
+    await waitFor(() => expect(screen.queryByTestId("state")).toBeNull());
+    expect(screen.getByTestId("user").textContent).toBe("guest");
   });
 
   it("handles corrupt localStorage JSON gracefully and resets to guest", async () => {
@@ -90,6 +111,7 @@ describe("AuthProvider – hydration", () => {
 
     wrap(<TestConsumer />);
     await waitFor(() => expect(screen.getByTestId("user").textContent).toBe("guest"));
+    expect(vi.mocked(setStoredToken)).toHaveBeenCalledWith(null);
   });
 });
 
@@ -128,6 +150,21 @@ describe("AuthProvider – login", () => {
     await act(async () => { screen.getByText("login").click(); });
     await waitFor(() => expect(vi.mocked(setStoredToken)).toHaveBeenCalledWith("tok-set"));
   });
+
+  it("writes mp_user JSON to localStorage matching the logged-in user", async () => {
+    const mockUser = { id: "1", email: "a@b.com", displayName: "Alice", role: "player" as const };
+    vi.mocked(api.login).mockResolvedValue({ token: "tok", user: mockUser });
+
+    wrap(<TestConsumer />);
+    await waitFor(() => expect(screen.queryByTestId("state")).toBeNull());
+
+    await act(async () => { screen.getByText("login").click(); });
+    await waitFor(() => {
+      const raw = localStorage.getItem("mp_user");
+      expect(raw).toBeTruthy();
+      expect(JSON.parse(raw!)).toEqual(mockUser);
+    });
+  });
 });
 
 // ─── register ────────────────────────────────────────────────────────────────
@@ -153,6 +190,17 @@ describe("AuthProvider – register", () => {
 
     await act(async () => { screen.getByText("register").click(); });
     await waitFor(() => expect(localStorage.getItem("mp_token")).toBe("reg-stored"));
+  });
+
+  it("calls setStoredToken with the new token after registration", async () => {
+    const mockUser = { id: "2", email: "a@b.com", displayName: "Alice", role: "organizer" as const };
+    vi.mocked(api.register).mockResolvedValue({ token: "reg-tok-set", user: mockUser });
+
+    wrap(<TestConsumer />);
+    await waitFor(() => expect(screen.queryByTestId("state")).toBeNull());
+
+    await act(async () => { screen.getByText("register").click(); });
+    await waitFor(() => expect(vi.mocked(setStoredToken)).toHaveBeenCalledWith("reg-tok-set"));
   });
 });
 
@@ -182,6 +230,18 @@ describe("AuthProvider – logout", () => {
     await act(async () => { screen.getByText("logout").click(); });
     expect(localStorage.getItem("mp_token")).toBeNull();
     expect(localStorage.getItem("mp_user")).toBeNull();
+  });
+
+  it("calls setStoredToken(null) on logout", async () => {
+    const mockUser = { id: "1", email: "a@b.com", displayName: "Alice", role: "player" as const };
+    localStorage.setItem("mp_token", "tok");
+    localStorage.setItem("mp_user", JSON.stringify(mockUser));
+
+    wrap(<TestConsumer />);
+    await waitFor(() => expect(screen.getByTestId("user").textContent).toBe("Alice"));
+
+    await act(async () => { screen.getByText("logout").click(); });
+    expect(vi.mocked(setStoredToken)).toHaveBeenCalledWith(null);
   });
 });
 
