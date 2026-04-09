@@ -1,10 +1,10 @@
 /**
  * Tests for frontend/src/layouts/DashboardLayout.tsx
  *
- * Covers: NavItem (renders link + active class), TournamentsNavLink (active
- * on tournament routes), DashboardLayout auth guard (redirects unauthenticated
- * users), loading state, closeSidebar (closes on Escape key + nav change),
- * and computed initials.
+ * Covers: NavItem / TournamentsNavLink, auth guard + loading, guest bracket
+ * viewer UI, organizer Create Tournament, search placeholders, Current Event /
+ * tournament-route chrome, Pro sidebar on brackets, logout, initials,
+ * sidebar open/close + Escape.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
@@ -151,6 +151,104 @@ describe("DashboardLayout – initials", () => {
     );
     renderLayout();
     expect(screen.getByText("A")).toBeInTheDocument();
+  });
+});
+
+// ─── Guest viewer on public bracket route ─────────────────────────────────────
+
+describe("DashboardLayout – guest bracket view", () => {
+  beforeEach(() => {
+    vi.mocked(useAuth).mockReturnValue(
+      buildAuthState({ user: null }) as ReturnType<typeof useAuth>
+    );
+  });
+
+  it("shows Guest, viewer label, and Log in on a public bracket URL", () => {
+    renderLayout("/t/evt-1/bracket");
+    expect(screen.getByText("Guest")).toBeInTheDocument();
+    expect(screen.getByText("Viewer")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^log in$/i })).toBeInTheDocument();
+    expect(screen.getByText("?")).toBeInTheDocument();
+  });
+
+  it("renders the Pro plan sidebar blurb on bracket routes", () => {
+    renderLayout("/t/evt-1/bracket");
+    expect(screen.getByText(/pro plan/i)).toBeInTheDocument();
+    expect(screen.getByText(/unlimited brackets/i)).toBeInTheDocument();
+  });
+});
+
+// ─── Role-specific topbar ─────────────────────────────────────────────────────
+
+describe("DashboardLayout – Create Tournament (organizer only)", () => {
+  it("shows Create Tournament for organizers", () => {
+    vi.mocked(useAuth).mockReturnValue(
+      buildAuthState({ user: { id: "o1", email: "o@x.com", displayName: "Org", role: "organizer" } }) as ReturnType<typeof useAuth>
+    );
+    renderLayout();
+    expect(screen.getByRole("link", { name: /create tournament/i })).toBeInTheDocument();
+  });
+
+  it("does not show Create Tournament for players", () => {
+    vi.mocked(useAuth).mockReturnValue(
+      buildAuthState({ user: { id: "p1", email: "p@x.com", displayName: "Pat", role: "player" } }) as ReturnType<typeof useAuth>
+    );
+    renderLayout();
+    expect(screen.queryByRole("link", { name: /create tournament/i })).not.toBeInTheDocument();
+  });
+});
+
+// ─── Tournament visual chrome ───────────────────────────────────────────────────
+
+describe("DashboardLayout – tournament route styling", () => {
+  it("adds tournament-route class on /tournament", () => {
+    renderLayout("/tournament");
+    const root = document.querySelector(".dashboard-root");
+    expect(root?.className).toContain("tournament-route");
+  });
+
+  it("shows Current Event in the sidebar on /tournament", () => {
+    renderLayout("/tournament");
+    expect(screen.getByText(/current event/i)).toBeInTheDocument();
+    expect(screen.getByText("Winter Cup 2024")).toBeInTheDocument();
+  });
+});
+
+// ─── Search placeholder ───────────────────────────────────────────────────────
+
+describe("DashboardLayout – search placeholder", () => {
+  it("uses the default placeholder on /dashboard", () => {
+    renderLayout("/dashboard");
+    expect(screen.getByRole("searchbox", { name: /search/i })).toHaveAttribute(
+      "placeholder",
+      "Search tournaments, players..."
+    );
+  });
+
+  it("uses the events placeholder on /tournament", () => {
+    renderLayout("/tournament");
+    expect(screen.getByRole("searchbox", { name: /search/i })).toHaveAttribute("placeholder", "Search events...");
+  });
+
+  it("uses the tournaments placeholder on public bracket routes", () => {
+    vi.mocked(useAuth).mockReturnValue(buildAuthState({ user: null }) as ReturnType<typeof useAuth>);
+    renderLayout("/t/x/bracket");
+    expect(screen.getByRole("searchbox", { name: /search/i })).toHaveAttribute(
+      "placeholder",
+      "Search tournaments..."
+    );
+  });
+});
+
+// ─── Log out ────────────────────────────────────────────────────────────────────
+
+describe("DashboardLayout – logout", () => {
+  it("calls logout when Log out is clicked", () => {
+    const logout = vi.fn();
+    vi.mocked(useAuth).mockReturnValue(buildAuthState({ logout }) as ReturnType<typeof useAuth>);
+    renderLayout();
+    fireEvent.click(screen.getByRole("button", { name: /log out/i }));
+    expect(logout).toHaveBeenCalledTimes(1);
   });
 });
 
