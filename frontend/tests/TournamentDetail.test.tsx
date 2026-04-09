@@ -1,9 +1,10 @@
 /**
  * Tests for frontend/src/pages/TournamentDetail.tsx
  *
- * Covers: initial load (api.getTournament + getTournamentBracket), pre-fill
- * useEffect, onRegister (success + error), onBracket, and computed flags
- * (isFull, isClosed, canRegister, already-registered banner).
+ * Covers: load (getTournament + getTournamentBracket), spots labels, entrants
+ * list, hub link, guest login CTA, pre-fill, registration flow (submit, cancel,
+ * errors), organizer bracket (success, navigate, error), flags (closed, full,
+ * already registered).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -102,6 +103,76 @@ describe("TournamentDetailPage – load", () => {
     renderDetail();
     await waitFor(() => expect(screen.getByText(/view bracket/i)).toBeInTheDocument());
   });
+
+  it("calls getTournament and getTournamentBracket with the route id", async () => {
+    vi.mocked(api.getTournament).mockResolvedValue(buildDetail());
+    renderDetail();
+    await waitFor(() => expect(screen.getByText("Test Open")).toBeInTheDocument());
+    expect(vi.mocked(api.getTournament)).toHaveBeenCalledWith("tournament-abc");
+    expect(vi.mocked(api.getTournamentBracket)).toHaveBeenCalledWith("tournament-abc");
+  });
+
+  it("renders a link back to the tournament hub", async () => {
+    vi.mocked(api.getTournament).mockResolvedValue(buildDetail());
+    renderDetail();
+    await waitFor(() => expect(screen.getByRole("link", { name: /tournament/i })).toHaveAttribute("href", "/tournament"));
+  });
+});
+
+// ─── Spots label & entrants ───────────────────────────────────────────────────
+
+describe("TournamentDetailPage – spots and entrants list", () => {
+  it("shows X / Y spots filled when maxEntrants is set", async () => {
+    vi.mocked(api.getTournament).mockResolvedValue(buildDetail({ entrantCount: 3, maxEntrants: 16 }));
+    renderDetail();
+    await waitFor(() => expect(screen.getByText(/3 \/ 16 spots filled/i)).toBeInTheDocument());
+  });
+
+  it("shows entrant count without max cap using plural entrants", async () => {
+    vi.mocked(api.getTournament).mockResolvedValue(buildDetail({ entrantCount: 2, maxEntrants: null }));
+    renderDetail();
+    await waitFor(() => expect(screen.getByText(/2 entrants/i)).toBeInTheDocument());
+  });
+
+  it("uses singular entrant when count is 1 and no max", async () => {
+    vi.mocked(api.getTournament).mockResolvedValue(
+      buildDetail({ entrantCount: 1, maxEntrants: null, entrants: [] })
+    );
+    renderDetail();
+    await waitFor(() => expect(screen.getByText(/1 entrant\b/i)).toBeInTheDocument());
+  });
+
+  it("shows empty state when there are no entrants", async () => {
+    vi.mocked(api.getTournament).mockResolvedValue(buildDetail({ entrantCount: 0, entrants: [] }));
+    renderDetail();
+    await waitFor(() => expect(screen.getByText(/no one has signed up yet/i)).toBeInTheDocument());
+  });
+
+  it("lists entrant display names", async () => {
+    vi.mocked(api.getTournament).mockResolvedValue(
+      buildDetail({
+        entrants: [
+          { userId: "a", displayName: "Alpha", gameSelection: "CS2", registeredAt: "2025-01-01" },
+          { userId: "b", displayName: "Bravo", gameSelection: "CS2", registeredAt: "2025-01-02" },
+        ],
+      })
+    );
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByText("Alpha")).toBeInTheDocument();
+      expect(screen.getByText("Bravo")).toBeInTheDocument();
+    });
+  });
+});
+
+// ─── Guest (not logged in) ────────────────────────────────────────────────────
+
+describe("TournamentDetailPage – guest user", () => {
+  it("prompts to log in as a player with a next link", async () => {
+    vi.mocked(api.getTournament).mockResolvedValue(buildDetail());
+    renderDetail(null);
+    await waitFor(() => expect(screen.getByRole("link", { name: /^log in$/i })).toHaveAttribute("href", "/login?next=%2Ft%2Ftournament-abc"));
+  });
 });
 
 // ─── onRegister ───────────────────────────────────────────────────────────────
@@ -162,6 +233,24 @@ describe("TournamentDetailPage – onRegister", () => {
 
     await waitFor(() => expect(screen.getByText("Already registered")).toBeInTheDocument());
   });
+
+  it("pre-fills game selection from the tournament game", async () => {
+    vi.mocked(api.getTournament).mockResolvedValue(buildDetail({ game: "Rocket League" }));
+    renderDetail({ id: "u1", displayName: "Alice", role: "player" });
+    await waitFor(() => screen.getByText(/sign up for this event/i));
+    fireEvent.click(screen.getByText(/sign up for this event/i));
+    await waitFor(() => expect(screen.getByLabelText(/^game$/i)).toHaveValue("Rocket League"));
+  });
+
+  it("closes the form when Cancel is clicked", async () => {
+    vi.mocked(api.getTournament).mockResolvedValue(buildDetail());
+    renderDetail({ id: "u1", displayName: "Alice", role: "player" });
+    await waitFor(() => screen.getByText(/sign up for this event/i));
+    fireEvent.click(screen.getByText(/sign up for this event/i));
+    await waitFor(() => screen.getByRole("button", { name: /cancel/i }));
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    await waitFor(() => expect(screen.queryByLabelText(/^game$/i)).not.toBeInTheDocument());
+  });
 });
 
 // ─── onBracket ────────────────────────────────────────────────────────────────
@@ -198,6 +287,18 @@ describe("TournamentDetailPage – onBracket", () => {
 
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/t/tournament-abc/bracket"));
   });
+
+  it("shows an error when generateBracket fails", async () => {
+    vi.mocked(api.getTournament).mockResolvedValue(buildDetail());
+    vi.mocked(api.generateBracket).mockRejectedValue(new Error("Need at least 2 players"));
+    renderDetail({ id: "org1", displayName: "Org", role: "organizer" });
+
+    await waitFor(() => screen.getByRole("button", { name: /generate bracket/i }));
+    fireEvent.click(screen.getByRole("button", { name: /generate bracket/i }));
+
+    await waitFor(() => expect(screen.getByText("Need at least 2 players")).toBeInTheDocument());
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
 });
 
 // ─── Computed flags ───────────────────────────────────────────────────────────
@@ -223,5 +324,11 @@ describe("TournamentDetailPage – computed flags", () => {
     );
     renderDetail({ id: "u1", displayName: "Alice", role: "player" });
     await waitFor(() => expect(screen.getByText(/you are registered/i)).toBeInTheDocument());
+  });
+
+  it("does not offer Sign up for organizers", async () => {
+    vi.mocked(api.getTournament).mockResolvedValue(buildDetail());
+    renderDetail({ id: "org1", displayName: "Org", role: "organizer" });
+    await waitFor(() => expect(screen.queryByText(/sign up for this event/i)).not.toBeInTheDocument());
   });
 });
