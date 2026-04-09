@@ -1,9 +1,9 @@
 /**
  * Tests for frontend/src/pages/DashboardPage.tsx
  *
- * Covers: formatDateRange (output format, 7-day span), DashboardPage rendering
- * (loading state, tournament list, empty state), and the stats useMemo
- * (totalEntrants summation, liveEvents count).
+ * Covers: formatDateRange, listTournaments on mount, loading / error / empty /
+ * list UI, stats (totals, live count, matchId), preview cap (4 rows), singular
+ * entrant copy, organizer vs player empty state, links (View All, Open, create).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -79,6 +79,12 @@ describe("DashboardPage – loading state", () => {
     renderDashboard();
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
+
+  it("calls api.listTournaments once on mount", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([]);
+    renderDashboard();
+    await waitFor(() => expect(vi.mocked(api.listTournaments)).toHaveBeenCalledTimes(1));
+  });
 });
 
 // ─── DashboardPage – fetched list ─────────────────────────────────────────────
@@ -92,6 +98,50 @@ describe("DashboardPage – tournament list", () => {
     renderDashboard();
     await waitFor(() => expect(screen.getByText("Apex Open")).toBeInTheDocument());
     expect(screen.getByText("Valorant Cup")).toBeInTheDocument();
+  });
+
+  it("renders the dashboard heading and date pill", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([]);
+    renderDashboard();
+    await waitFor(() => expect(screen.getByRole("heading", { name: /^dashboard$/i })).toBeInTheDocument());
+    expect(screen.getByText(/executive overview/i)).toBeInTheDocument();
+    expect(screen.getByText(formatDateRange())).toBeInTheDocument();
+  });
+
+  it("includes a View All link to /tournament", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([]);
+    renderDashboard();
+    await waitFor(() => expect(screen.getByRole("link", { name: /view all/i })).toHaveAttribute("href", "/tournament"));
+  });
+
+  it("only previews the first four tournaments when more exist", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([
+      buildTournament({ id: "a", name: "T1" }),
+      buildTournament({ id: "b", name: "T2" }),
+      buildTournament({ id: "c", name: "T3" }),
+      buildTournament({ id: "d", name: "T4" }),
+      buildTournament({ id: "e", name: "T5 Hidden" }),
+    ]);
+    renderDashboard();
+    await waitFor(() => expect(screen.getByText("T1")).toBeInTheDocument());
+    expect(screen.getByText("T4")).toBeInTheDocument();
+    expect(screen.queryByText("T5 Hidden")).not.toBeInTheDocument();
+  });
+
+  it("links each row to /t/:id with an Open link", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([buildTournament({ id: "tid-xyz", name: "One Event" })]);
+    renderDashboard();
+    await waitFor(() => expect(screen.getByText("One Event")).toBeInTheDocument());
+    const mainLink = screen.getByRole("link", { name: /one event/i });
+    expect(mainLink).toHaveAttribute("href", "/t/tid-xyz");
+    const openLinks = screen.getAllByRole("link", { name: /^open$/i });
+    expect(openLinks.some((el) => el.getAttribute("href") === "/t/tid-xyz")).toBe(true);
+  });
+
+  it("uses singular entrant when a tournament has one entrant", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([buildTournament({ name: "Solo", entrantCount: 1 })]);
+    renderDashboard();
+    await waitFor(() => expect(screen.getByText(/1 entrant\b/i)).toBeInTheDocument());
   });
 
   it("shows the 'No tournaments found' empty state when the list is empty", async () => {
@@ -136,6 +186,12 @@ describe("DashboardPage – stats summary", () => {
     renderDashboard();
     await waitFor(() => expect(screen.getByText("00")).toBeInTheDocument());
   });
+
+  it("shows MATCH ID from the first tournament id prefix on the revenue card", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([buildTournament({ id: "abcdefgh-extra", name: "X" })]);
+    renderDashboard();
+    await waitFor(() => expect(screen.getByText(/MATCH ID: abcdefgh/i)).toBeInTheDocument());
+  });
 });
 
 // ─── DashboardPage – organizer CTA ───────────────────────────────────────────
@@ -145,5 +201,25 @@ describe("DashboardPage – organizer create button", () => {
     vi.mocked(api.listTournaments).mockResolvedValue([]);
     renderDashboard({ role: "organizer", displayName: "Org" });
     await waitFor(() => expect(screen.getByText(/create your first tournament/i)).toBeInTheDocument());
+  });
+
+  it("links create CTA to /tournament?create=1", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([]);
+    renderDashboard({ role: "organizer", displayName: "Org" });
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: /create your first tournament/i })).toHaveAttribute(
+        "href",
+        "/tournament?create=1"
+      )
+    );
+  });
+});
+
+describe("DashboardPage – player empty state", () => {
+  it("does not show create tournament for players when the list is empty", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([]);
+    renderDashboard({ role: "player", displayName: "Pat" });
+    await waitFor(() => expect(screen.queryByText(/create your first tournament/i)).not.toBeInTheDocument());
+    expect(screen.getByText(/ask an organizer to publish/i)).toBeInTheDocument();
   });
 });
