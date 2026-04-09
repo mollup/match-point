@@ -5,6 +5,10 @@
  * api.getTournament, api.createTournament, api.registerForTournament,
  * api.getEntrants, api.generateBracket, api.getTournamentBracket,
  * api.getUser, api.patchUser
+ *
+ * Also covers shared request() behavior: Authorization when token present,
+ * auth: false skipping the header, non-JSON error bodies, and errorMessage
+ * fallbacks; plus getTournamentBracket URL, parse errors, and HTTP errors.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { api, setStoredToken } from "../src/api";
@@ -73,6 +77,15 @@ describe("api.login", () => {
   it("throws with the server error message on a 401 response", async () => {
     mockFetchError({ error: "Invalid credentials" }, 401);
     await expect(api.login({ email: "bad@email.com", password: "wrong" })).rejects.toThrow("Invalid credentials");
+  });
+
+  it("does not send Authorization even when mp_token is set (auth: false)", async () => {
+    setStoredToken("stored-token");
+    mockFetchOk({ token: "t", user: { id: "1", email: "a@b.com", displayName: "A", role: "player" } });
+    await api.login({ email: "a@b.com", password: "pass" });
+    const [, opts] = vi.mocked(fetch).mock.calls[0];
+    const h = opts?.headers as Headers;
+    expect(h.get("Authorization")).toBeNull();
   });
 });
 
@@ -148,6 +161,18 @@ describe("api.getTournament", () => {
     mockFetchError({ error: "Not found" }, 404);
     await expect(api.getTournament("missing")).rejects.toThrow("Not found");
   });
+
+  it("throws with response body text when the error is not JSON-shaped", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response("upstream timeout", { status: 502, statusText: "Bad Gateway" })
+    );
+    await expect(api.getTournament("x")).rejects.toThrow("upstream timeout");
+  });
+
+  it("throws Validation failed when error field is present but not a string", async () => {
+    mockFetchError({ error: true }, 400);
+    await expect(api.getTournament("x")).rejects.toThrow("Validation failed");
+  });
 });
 
 // ─── api.createTournament ─────────────────────────────────────────────────────
@@ -166,6 +191,15 @@ describe("api.createTournament", () => {
     mockFetchOk({ id: "created-id", name: "New", game: "Valorant" });
     const result = await api.createTournament({ name: "New", game: "Valorant" });
     expect(result.id).toBe("created-id");
+  });
+
+  it("sends Authorization Bearer when mp_token is set", async () => {
+    setStoredToken("jwt-from-storage");
+    mockFetchOk({ id: "id1", name: "N", game: "G" });
+    await api.createTournament({ name: "N", game: "G" });
+    const [, opts] = vi.mocked(fetch).mock.calls[0];
+    const h = opts?.headers as Headers;
+    expect(h.get("Authorization")).toBe("Bearer jwt-from-storage");
   });
 });
 
@@ -256,6 +290,26 @@ describe("api.getTournamentBracket", () => {
     const result = await api.getTournamentBracket("t1");
     expect(result?.tournamentId).toBe("t1");
     expect(result?.playerCount).toBe(4);
+  });
+
+  it("sends GET to /api/tournaments/:id/bracket", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ tournamentId: "tid", playerCount: 0, roundCount: 0, rounds: [] }), { status: 200 })
+    );
+    await api.getTournamentBracket("tid");
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe("/api/tournaments/tid/bracket");
+  });
+
+  it("throws Invalid response when the body is not JSON on 200", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(new Response("not-json", { status: 200 }));
+    await expect(api.getTournamentBracket("t1")).rejects.toThrow("Invalid response");
+  });
+
+  it("throws with server error message on non-404 failure", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "Bracket not ready" }), { status: 503 })
+    );
+    await expect(api.getTournamentBracket("t1")).rejects.toThrow("Bracket not ready");
   });
 });
 
