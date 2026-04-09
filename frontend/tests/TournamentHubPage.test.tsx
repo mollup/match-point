@@ -1,9 +1,10 @@
 /**
  * Tests for frontend/src/pages/TournamentHubPage.tsx
  *
- * Covers: loadList (API call on mount), filtered useMemo (query matching by
- * name and game), startCreate / backToFind phase transitions, and
- * submitBasics (organizer creates a tournament).
+ * Covers: loadList (success + failure), loading UI, filtered search,
+ * ?create=1 deep link, setCurrentEventTitle, organizer vs player UI,
+ * startCreate / backToFind, submitBasics (create + error + skip when draft),
+ * setup steps 2–3.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -21,12 +22,13 @@ vi.mock("../src/api", () => ({
 
 vi.mock("../src/auth-context", () => ({ useAuth: vi.fn() }));
 
-// TournamentHubPage uses useOutletContext; mock it so it doesn't throw
+const setCurrentEventTitle = vi.fn();
+
 vi.mock("react-router-dom", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-router-dom")>();
   return {
     ...actual,
-    useOutletContext: () => ({ setCurrentEventTitle: vi.fn() }),
+    useOutletContext: () => ({ setCurrentEventTitle }),
   };
 });
 
@@ -57,6 +59,7 @@ function renderHub(user: Record<string, unknown> | null = null, path = "/tournam
 
 beforeEach(() => {
   vi.clearAllMocks();
+  setCurrentEventTitle.mockClear();
 });
 
 // ─── loadList ─────────────────────────────────────────────────────────────────
@@ -82,6 +85,24 @@ describe("TournamentHubPage – loadList", () => {
     vi.mocked(api.listTournaments).mockResolvedValue([]);
     renderHub();
     await waitFor(() => expect(screen.getByText(/no tournaments match/i)).toBeInTheDocument());
+  });
+
+  it("shows Loading before listTournaments resolves", () => {
+    vi.mocked(api.listTournaments).mockReturnValue(new Promise(() => {}));
+    renderHub();
+    expect(screen.getByText(/^loading/i)).toBeInTheDocument();
+  });
+
+  it("sets list to empty when listTournaments throws", async () => {
+    vi.mocked(api.listTournaments).mockRejectedValue(new Error("network"));
+    renderHub();
+    await waitFor(() => expect(screen.getByText(/no tournaments match/i)).toBeInTheDocument());
+  });
+
+  it("renders singular 'entrant' when count is 1", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([buildTournament({ id: "solo", name: "Solo Cup", entrantCount: 1 })]);
+    renderHub();
+    await waitFor(() => expect(screen.getByText(/1 entrant(?!s)/i)).toBeInTheDocument());
   });
 });
 
@@ -143,6 +164,38 @@ describe("TournamentHubPage – filtered", () => {
   });
 });
 
+// ─── Player vs organizer (find phase) ───────────────────────────────────────
+
+describe("TournamentHubPage – find phase roles", () => {
+  it("does not show New event setup for players", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([]);
+    renderHub({ role: "player", displayName: "Pat" });
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+    expect(screen.queryByText(/new event setup/i)).not.toBeInTheDocument();
+  });
+});
+
+// ─── ?create=1 deep link ──────────────────────────────────────────────────────
+
+describe("TournamentHubPage – create query param", () => {
+  it("opens setup step 1 for organizers when ?create=1", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([]);
+    renderHub({ role: "organizer", displayName: "Org" }, "/tournament?create=1");
+    await waitFor(() => expect(screen.getByLabelText(/event title/i)).toBeInTheDocument());
+  });
+
+  it("calls setCurrentEventTitle while in setup with the event name", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([]);
+    renderHub({ role: "organizer", displayName: "Org" });
+    await waitFor(() => screen.getByText(/new event setup/i));
+    fireEvent.click(screen.getByText(/new event setup/i));
+    await waitFor(() => expect(screen.getByLabelText(/event title/i)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(setCurrentEventTitle).toHaveBeenCalledWith(expect.stringContaining("Apex"))
+    );
+  });
+});
+
 // ─── startCreate / backToFind ─────────────────────────────────────────────────
 
 describe("TournamentHubPage – startCreate and backToFind", () => {
@@ -188,5 +241,65 @@ describe("TournamentHubPage – submitBasics", () => {
     await waitFor(() =>
       expect(vi.mocked(api.createTournament)).toHaveBeenCalledWith({ name: "New Event", game: "SC2" })
     );
+  });
+
+  it("shows an error message when createTournament fails", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([]);
+    vi.mocked(api.createTournament).mockRejectedValue(new Error("Server busy"));
+    renderHub({ role: "organizer", displayName: "Org" });
+
+    await waitFor(() => screen.getByText(/new event setup/i));
+    fireEvent.click(screen.getByText(/new event setup/i));
+    await waitFor(() => screen.getByLabelText(/event title/i));
+    fireEvent.click(screen.getByRole("button", { name: /continue to roster/i }));
+
+    await waitFor(() => expect(screen.getByText("Server busy")).toBeInTheDocument());
+  });
+
+  it("advances to roster without calling create again when returning to step 1 with a draft id", async () => {
+    vi.mocked(api.listTournaments).mockResolvedValue([]);
+    vi.mocked(api.createTournament).mockResolvedValue({ id: "draft-id", name: "Evt", game: "G" });
+    renderHub({ role: "organizer", displayName: "Org" });
+
+    await waitFor(() => screen.getByText(/new event setup/i));
+    fireEvent.click(screen.getByText(/new event setup/i));
+    await waitFor(() => screen.getByLabelText(/event title/i));
+    fireEvent.click(screen.getByRole("button", { name: /continue to roster/i }));
+    await waitFor(() => expect(screen.getByText(/adding players/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /^back$/i }));
+    await waitFor(() => screen.getByLabelText(/event title/i));
+    vi.mocked(api.createTournament).mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: /continue to roster/i }));
+    await waitFor(() => expect(screen.getByText(/adding players/i)).toBeInTheDocument());
+    expect(vi.mocked(api.createTournament)).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Setup steps 2 and 3 ───────────────────────────────────────────────────────
+
+describe("TournamentHubPage – setup steps 2–3", () => {
+  async function goToRosterStep() {
+    vi.mocked(api.listTournaments).mockResolvedValue([]);
+    vi.mocked(api.createTournament).mockResolvedValue({ id: "evt-99", name: "Evt", game: "G" });
+    renderHub({ role: "organizer", displayName: "Org" });
+    await waitFor(() => screen.getByText(/new event setup/i));
+    fireEvent.click(screen.getByText(/new event setup/i));
+    await waitFor(() => screen.getByLabelText(/event title/i));
+    fireEvent.click(screen.getByRole("button", { name: /continue to roster/i }));
+    await waitFor(() => expect(screen.getByText(/adding players/i)).toBeInTheDocument());
+  }
+
+  it("shows roster progress and can continue to the engine step", async () => {
+    await goToRosterStep();
+    fireEvent.click(screen.getByRole("button", { name: /continue to engine/i }));
+    await waitFor(() => expect(screen.getByText(/bracket engine/i)).toBeInTheDocument());
+  });
+
+  it("shows a link to the new event on step 3 after creation", async () => {
+    await goToRosterStep();
+    fireEvent.click(screen.getByRole("button", { name: /continue to engine/i }));
+    await waitFor(() => expect(screen.getByRole("link", { name: /open event.*generate bracket/i })).toHaveAttribute("href", "/t/evt-99"));
   });
 });
