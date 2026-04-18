@@ -7,6 +7,7 @@ import { requireAuth } from "../middleware/auth.js";
 import {
   createUser,
   getUserById,
+  getUserHistory,
   isEmailTaken,
   isUsernameTaken,
   softDeleteUser,
@@ -77,6 +78,21 @@ router.get("/:id", (req, res) => {
     return;
   }
   res.json(toPublicUserProfile(user));
+});
+
+router.get("/:id/history", (req, res) => {
+  const user = getUserById(req.params.id);
+  if (!user || user.deletedAt) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const game = typeof req.query.game === "string" ? req.query.game : undefined;
+  const page = typeof req.query.page === "string" ? parseInt(req.query.page, 10) : 1;
+  const pageSize = typeof req.query.pageSize === "string" ? parseInt(req.query.pageSize, 10) : 20;
+
+  const result = getUserHistory(user.id, { game, page, pageSize });
+  res.json(result);
 });
 
 const patchSchema = z
