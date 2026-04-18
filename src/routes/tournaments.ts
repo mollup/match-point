@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { BracketProgressError } from "../bracket/bracketState.js";
 import { BracketValidationError, buildSingleEliminationBracket } from "../bracket/singleElimination.js";
 import type { BracketPlayer } from "../types.js";
 import {
@@ -11,6 +12,8 @@ import {
   getTournamentBracket,
   getUserById,
   listTournaments,
+  enqueueMatchReadyNotifications,
+  reportBracketMatchWinner,
   setEntrantCheckedIn,
   setTournamentBracket,
   updateTournament,
@@ -314,6 +317,47 @@ const bracketBodySchema = z
       .optional(),
   })
   .optional();
+
+const reportWinnerSchema = z.object({
+  winnerUserId: z.string().uuid(),
+});
+
+router.post(
+  "/:id/matches/:matchId/winner",
+  requireAuth,
+  requireOrganizer,
+  (req: AuthedRequest, res) => {
+    const parsed = reportWinnerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    const tournament = getTournament(req.params.id);
+    if (!tournament) {
+      res.status(404).json({ error: "Tournament not found" });
+      return;
+    }
+    try {
+      const outcome = reportBracketMatchWinner(
+        req.params.id,
+        req.params.matchId,
+        parsed.data.winnerUserId
+      );
+      if (!outcome) {
+        res.status(404).json({ error: "Bracket not found" });
+        return;
+      }
+      enqueueMatchReadyNotifications(req.params.id, outcome.newlyReadyMatchIds);
+      res.status(200).json({ bracket: outcome.bracket });
+    } catch (e) {
+      if (e instanceof BracketProgressError) {
+        res.status(400).json({ error: e.message });
+        return;
+      }
+      throw e;
+    }
+  }
+);
 
 router.post("/:id/bracket", requireAuth, requireOrganizer, (req: AuthedRequest, res) => {
   const parsed = bracketBodySchema.safeParse(req.body ?? {});

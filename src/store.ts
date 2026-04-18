@@ -1,7 +1,13 @@
 import { randomUUID } from "crypto";
+import {
+  findMatch,
+  recordMatchWinner as applyMatchWinner,
+  syncBracketDerivedState,
+} from "./bracket/bracketState.js";
 import type {
   BracketResponse,
   Entrant,
+  MatchCallNotification,
   PublicUserProfile,
   Tournament,
   User,
@@ -14,6 +20,96 @@ const usersByUsername = new Map<string, string>();
 const tournaments = new Map<string, Tournament>();
 const entrantsByTournament = new Map<string, Entrant[]>();
 const bracketsByTournament = new Map<string, BracketResponse>();
+const notificationsById = new Map<string, MatchCallNotification>();
+const matchReadyNotificationKeys = new Set<string>();
+
+function matchReadyKey(tournamentId: string, matchId: string, playerId: string): string {
+  return `${tournamentId}\0${matchId}\0${playerId}`;
+}
+
+/**
+ * Creates unread match-call notifications for both players when a match becomes ready.
+ * Idempotent per (matchId, playerId). Skips users who are not entrants in the tournament.
+ * Runs immediately (always within the 2s SLA for this in-memory queue).
+ */
+export function enqueueMatchReadyNotifications(
+  tournamentId: string,
+  newlyReadyMatchIds: readonly string[]
+): void {
+  const bracket = bracketsByTournament.get(tournamentId);
+  if (!bracket) return;
+  const entrants = getEntrants(tournamentId);
+  const entrantIds = new Set(entrants.map((e) => e.userId));
+
+  for (const matchId of newlyReadyMatchIds) {
+    const m = findMatch(bracket, matchId);
+    if (!m || m.status !== "ready" || !m.player1 || !m.player2) continue;
+
+    for (const player of [m.player1, m.player2]) {
+      if (!entrantIds.has(player.userId)) continue;
+      const key = matchReadyKey(tournamentId, m.id, player.userId);
+      if (matchReadyNotificationKeys.has(key)) continue;
+      matchReadyNotificationKeys.add(key);
+
+      const opponent = player.userId === m.player1.userId ? m.player2 : m.player1;
+      const n: MatchCallNotification = {
+        id: randomUUID(),
+        userId: player.userId,
+        kind: "match_call",
+        tournamentId,
+        matchId: m.id,
+        round: m.round,
+        opponentDisplayName: opponent.displayName,
+        stationLabel: m.stationLabel ?? null,
+        read: false,
+        createdAt: new Date().toISOString(),
+      };
+      notificationsById.set(n.id, n);
+    }
+  }
+}
+
+export function listUnreadMatchCallNotifications(userId: string): MatchCallNotification[] {
+  return [...notificationsById.values()].filter(
+    (n) => n.userId === userId && !n.read && n.kind === "match_call"
+  );
+}
+
+export function getNotificationById(id: string): MatchCallNotification | undefined {
+  return notificationsById.get(id);
+}
+
+export function markNotificationRead(id: string, ownerUserId: string): "ok" | "not_found" | "forbidden" {
+  const n = notificationsById.get(id);
+  if (!n) return "not_found";
+  if (n.userId !== ownerUserId) return "forbidden";
+  n.read = true;
+  return "ok";
+}
+
+export function reportBracketMatchWinner(
+  tournamentId: string,
+  matchId: string,
+  winnerUserId: string
+): { bracket: BracketResponse; newlyReadyMatchIds: string[] } | undefined {
+  const bracket = bracketsByTournament.get(tournamentId);
+  if (!bracket) return undefined;
+  const newlyReady = applyMatchWinner(bracket, matchId, winnerUserId);
+  return { bracket, newlyReadyMatchIds: newlyReady };
+}
+
+export function setMatchStationLabel(
+  tournamentId: string,
+  matchId: string,
+  stationLabel: string | null
+): boolean {
+  const bracket = bracketsByTournament.get(tournamentId);
+  if (!bracket) return false;
+  const m = findMatch(bracket, matchId);
+  if (!m) return false;
+  m.stationLabel = stationLabel;
+  return true;
+}
 
 export function createUser(input: {
   username?: string;
@@ -188,7 +284,9 @@ export function closeCheckIn(tournamentId: string): Tournament | undefined {
 }
 
 export function setTournamentBracket(tournamentId: string, bracket: BracketResponse): void {
+  const newlyReady = syncBracketDerivedState(bracket);
   bracketsByTournament.set(tournamentId, bracket);
+  enqueueMatchReadyNotifications(tournamentId, newlyReady);
 }
 
 export function getTournamentBracket(tournamentId: string): BracketResponse | undefined {
@@ -203,4 +301,6 @@ export function __resetStoreForTests(): void {
   tournaments.clear();
   entrantsByTournament.clear();
   bracketsByTournament.clear();
+  notificationsById.clear();
+  matchReadyNotificationKeys.clear();
 }

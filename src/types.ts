@@ -45,6 +45,8 @@ export interface BracketPlayer {
   displayName: string;
 }
 
+export type BracketMatchStatus = "pending" | "ready" | "complete";
+
 export interface BracketMatch {
   id: string;
   round: number;
@@ -53,6 +55,36 @@ export interface BracketMatch {
   player2: BracketPlayer | null;
   /** Winner advances to this match id in the next round, if any */
   advancesToMatchId: string | null;
+  status: BracketMatchStatus;
+  winnerUserId: string | null;
+  /** Optional station / setup label shown to players (e.g. "Stream", "Setup 3"). */
+  stationLabel?: string | null;
+}
+
+export type MatchCallNotificationKind = "match_call";
+
+export interface MatchCallNotification {
+  id: string;
+  userId: string;
+  kind: MatchCallNotificationKind;
+  tournamentId: string;
+  matchId: string;
+  round: number;
+  opponentDisplayName: string;
+  stationLabel: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+/** Response DTO for GET .../notifications (unread match-call only). */
+export interface MatchCallNotificationDTO {
+  id: string;
+  tournamentId: string;
+  matchId: string;
+  round: number;
+  opponentDisplayName: string;
+  stationLabel: string | null;
+  createdAt: string;
 }
 
 export interface BracketRound {

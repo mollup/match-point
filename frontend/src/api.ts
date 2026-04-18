@@ -44,6 +44,8 @@ export interface BracketPlayer {
   displayName: string;
 }
 
+export type BracketMatchStatus = "pending" | "ready" | "complete";
+
 export interface BracketMatch {
   id: string;
   round: number;
@@ -51,6 +53,19 @@ export interface BracketMatch {
   player1: BracketPlayer | null;
   player2: BracketPlayer | null;
   advancesToMatchId: string | null;
+  status: BracketMatchStatus;
+  winnerUserId: string | null;
+  stationLabel?: string | null;
+}
+
+export interface MatchCallNotificationDTO {
+  id: string;
+  tournamentId: string;
+  matchId: string;
+  round: number;
+  opponentDisplayName: string;
+  stationLabel: string | null;
+  createdAt: string;
 }
 
 export interface BracketRound {
@@ -245,6 +260,17 @@ export const api = {
     return request(`/api/users/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
+      headers: jsonHeaders,
+    });
+  },
+
+  getMatchCallNotifications(userId: string): Promise<MatchCallNotificationDTO[]> {
+    return request(`/api/users/${userId}/notifications`, { headers: jsonHeaders });
+  },
+
+  ackMatchCallNotification(notificationId: string): Promise<{ ok: boolean }> {
+    return request(`/api/notifications/${notificationId}/ack`, {
+      method: "POST",
       headers: jsonHeaders,
     });
   },

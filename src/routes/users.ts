@@ -9,6 +9,7 @@ import {
   getUserById,
   isEmailTaken,
   isUsernameTaken,
+  listUnreadMatchCallNotifications,
   softDeleteUser,
   toPublicUserProfile,
   updateUserProfile,
@@ -68,6 +69,23 @@ router.post("/", (req, res) => {
       role: user.role,
     },
   });
+});
+
+router.get("/:id/notifications", requireAuth, (req: AuthedRequest, res) => {
+  if (req.userId !== req.params.id) {
+    res.status(403).json({ error: "You can only read your own notifications" });
+    return;
+  }
+  const items = listUnreadMatchCallNotifications(req.userId).map((n) => ({
+    id: n.id,
+    tournamentId: n.tournamentId,
+    matchId: n.matchId,
+    round: n.round,
+    opponentDisplayName: n.opponentDisplayName,
+    stationLabel: n.stationLabel,
+    createdAt: n.createdAt,
+  }));
+  res.status(200).json(items);
 });
 
 router.get("/:id", (req, res) => {
