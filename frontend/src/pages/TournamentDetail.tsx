@@ -173,14 +173,23 @@ export function TournamentDetailPage() {
           </span>
         )}
         {isOrg && (
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={onBracket}
-            disabled={busy}
-          >
-            Generate bracket
-          </button>
+          <>
+            <Link
+              to={`/t/${id}/checkin`}
+              className="btn btn-ghost"
+              style={{ textDecoration: "none", display: "inline-flex" }}
+            >
+              Check-in
+            </Link>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={onBracket}
+              disabled={busy}
+            >
+              Generate bracket
+            </button>
+          </>
         )}
       </div>
 
@@ -243,6 +252,21 @@ export function TournamentDetailPage() {
           {detail.entrants.map((e) => (
             <li key={e.userId} style={{ marginBottom: 4 }}>
               {e.displayName}
+              {detail.checkInClosed && !e.checkedIn ? (
+                <span
+                  style={{
+                    marginLeft: "0.5rem",
+                    fontSize: "0.7rem",
+                    padding: "0.1rem 0.4rem",
+                    borderRadius: "999px",
+                    background: "#fee2e2",
+                    color: "#991b1b",
+                    verticalAlign: "middle",
+                  }}
+                >
+                  Did Not Attend
+                </span>
+              ) : null}
             </li>
           ))}
         </ol>

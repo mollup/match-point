@@ -234,14 +234,25 @@ describe("POST /api/tournaments/:id/bracket", () => {
       .send({ name: "Locals", game: "Tekken 8" });
     const tid = tRes.body.id as string;
 
-    await request(app)
+    const r1 = await request(app)
       .post(`/api/tournaments/${tid}/register`)
       .set("Authorization", `Bearer ${p1}`)
       .send({ displayName: "player p1", gameSelection: "Tekken 8" });
-    await request(app)
+    const r2 = await request(app)
       .post(`/api/tournaments/${tid}/register`)
       .set("Authorization", `Bearer ${p2}`)
       .send({ displayName: "player p2", gameSelection: "Tekken 8" });
+
+    // US11: check in both players and close the window before bracket gen
+    await request(app)
+      .post(`/api/tournaments/${tid}/checkin/${r1.body.userId}`)
+      .set("Authorization", `Bearer ${orgToken}`);
+    await request(app)
+      .post(`/api/tournaments/${tid}/checkin/${r2.body.userId}`)
+      .set("Authorization", `Bearer ${orgToken}`);
+    await request(app)
+      .post(`/api/tournaments/${tid}/checkin/close`)
+      .set("Authorization", `Bearer ${orgToken}`);
 
     const res = await request(app)
       .post(`/api/tournaments/${tid}/bracket`)

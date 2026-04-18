@@ -129,6 +129,7 @@ export function createTournament(input: {
     maxEntrants: input.maxEntrants ?? null,
     registrationOpen: input.registrationOpen ?? true,
     createdAt: new Date().toISOString(),
+    checkInClosed: false,
   };
   tournaments.set(id, tournament);
   entrantsByTournament.set(id, []);
@@ -159,11 +160,31 @@ export function listTournaments(): Tournament[] {
 export function addEntrant(tournamentId: string, entrant: Entrant): void {
   const list = entrantsByTournament.get(tournamentId);
   if (!list) throw new Error("Unknown tournament");
-  list.push(entrant);
+  list.push({ ...entrant, checkedIn: entrant.checkedIn ?? false });
 }
 
 export function getEntrants(tournamentId: string): Entrant[] {
   return entrantsByTournament.get(tournamentId) ?? [];
+}
+
+export function setEntrantCheckedIn(
+  tournamentId: string,
+  entrantUserId: string,
+  checkedIn: boolean
+): Entrant | undefined {
+  const list = entrantsByTournament.get(tournamentId);
+  if (!list) return undefined;
+  const entrant = list.find((e) => e.userId === entrantUserId);
+  if (!entrant) return undefined;
+  entrant.checkedIn = checkedIn;
+  return entrant;
+}
+
+export function closeCheckIn(tournamentId: string): Tournament | undefined {
+  const t = tournaments.get(tournamentId);
+  if (!t) return undefined;
+  t.checkInClosed = true;
+  return t;
 }
 
 export function setTournamentBracket(tournamentId: string, bracket: BracketResponse): void {
