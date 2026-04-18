@@ -15,6 +15,7 @@ import { useAuth } from "../src/auth-context";
 vi.mock("../src/api", () => ({
   api: {
     getUser: vi.fn(),
+    getUserHistory: vi.fn(),
     patchUser: vi.fn(),
   },
 }));
@@ -38,6 +39,10 @@ function buildProfile(overrides: Record<string, unknown> = {}) {
     games: ["CS2", "Valorant"],
     region: "NA",
     createdAt: "2025-01-01",
+    totalTournaments: 0,
+    totalWins: 0,
+    totalLosses: 0,
+    bestPlacement: null,
     ...overrides,
   };
 }
@@ -55,6 +60,12 @@ function renderProfile(authUser: Record<string, unknown> | null = ownUser as Rec
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(api.getUserHistory).mockResolvedValue({
+    history: [],
+    page: 1,
+    pageSize: 10,
+    total: 0,
+  });
 });
 
 // ─── loadProfile ──────────────────────────────────────────────────────────────

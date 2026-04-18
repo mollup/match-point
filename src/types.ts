@@ -19,6 +19,10 @@ export interface PublicUserProfile {
   games: string[];
   region: string;
   role: UserRole;
+  totalTournaments: number;
+  totalWins: number;
+  totalLosses: number;
+  bestPlacement: number | null;
 }
 
 export interface Tournament {
@@ -30,6 +34,7 @@ export interface Tournament {
   registrationOpen: boolean;
   createdAt: string;
   checkInClosed: boolean;
+  finalized?: boolean;
 }
 
 export interface Entrant {
@@ -97,4 +102,27 @@ export interface BracketResponse {
   playerCount: number;
   roundCount: number;
   rounds: BracketRound[];
+}
+
+export interface MatchResult {
+  placement: number;
+  wins: number;
+  losses: number;
+}
+
+export interface HistoryEntry {
+  tournamentId: string;
+  name: string;
+  game: string;
+  date: string;
+  placement: number;
+  wins: number;
+  losses: number;
+}
+
+export interface UserStats {
+  totalTournaments: number;
+  totalWins: number;
+  totalLosses: number;
+  bestPlacement: number | null;
 }

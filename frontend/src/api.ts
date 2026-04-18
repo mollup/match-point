@@ -7,6 +7,20 @@ export interface UserProfile {
   games: string[];
   region?: string;
   createdAt: string;
+  totalTournaments: number;
+  totalWins: number;
+  totalLosses: number;
+  bestPlacement: number | null;
+}
+
+export interface HistoryEntry {
+  tournamentId: string;
+  name: string;
+  game: string;
+  date: string;
+  placement: number;
+  wins: number;
+  losses: number;
 }
 
 export interface AuthUser {
@@ -251,6 +265,24 @@ export const api = {
 
   getUser(id: string): Promise<UserProfile> {
     return request(`/api/users/${id}`, { auth: false });
+  },
+
+  getUserHistory(
+    userId: string,
+    options?: { game?: string; page?: number; pageSize?: number }
+  ): Promise<{
+    history: HistoryEntry[];
+    page: number;
+    pageSize: number;
+    total: number;
+  }> {
+    const params = new URLSearchParams();
+    if (options?.game) params.set("game", options.game);
+    if (options?.page) params.set("page", options.page.toString());
+    if (options?.pageSize) params.set("pageSize", options.pageSize.toString());
+    const query = params.toString();
+    const path = query ? `/api/users/${userId}/history?${query}` : `/api/users/${userId}/history`;
+    return request(path, { auth: false });
   },
 
   patchUser(

@@ -7,11 +7,14 @@ import {
 import type {
   BracketResponse,
   Entrant,
+  HistoryEntry,
+  MatchResult,
   MatchCallNotification,
   PublicUserProfile,
   Tournament,
   User,
   UserRole,
+  UserStats,
 } from "./types.js";
 
 const users = new Map<string, User>();
@@ -20,6 +23,7 @@ const usersByUsername = new Map<string, string>();
 const tournaments = new Map<string, Tournament>();
 const entrantsByTournament = new Map<string, Entrant[]>();
 const bracketsByTournament = new Map<string, BracketResponse>();
+const matchResults = new Map<string, Map<string, MatchResult>>();
 const notificationsById = new Map<string, MatchCallNotification>();
 const matchReadyNotificationKeys = new Set<string>();
 
@@ -199,6 +203,7 @@ export function updateUserProfile(
 }
 
 export function toPublicUserProfile(user: User): PublicUserProfile {
+  const stats = getUserStats(user.id);
   return {
     id: user.id,
     username: user.username,
@@ -206,6 +211,10 @@ export function toPublicUserProfile(user: User): PublicUserProfile {
     games: [...user.games],
     region: user.region,
     role: user.role,
+    totalTournaments: stats.totalTournaments,
+    totalWins: stats.totalWins,
+    totalLosses: stats.totalLosses,
+    bestPlacement: stats.bestPlacement,
   };
 }
 
@@ -293,6 +302,102 @@ export function getTournamentBracket(tournamentId: string): BracketResponse | un
   return bracketsByTournament.get(tournamentId);
 }
 
+export function setMatchResult(
+  tournamentId: string,
+  userId: string,
+  result: MatchResult
+): void {
+  let tournamentResults = matchResults.get(tournamentId);
+  if (!tournamentResults) {
+    tournamentResults = new Map();
+    matchResults.set(tournamentId, tournamentResults);
+  }
+  tournamentResults.set(userId, result);
+}
+
+export function finalizeTournament(tournamentId: string): Tournament | undefined {
+  const t = tournaments.get(tournamentId);
+  if (!t) return undefined;
+  t.finalized = true;
+  return t;
+}
+
+export function getUserStats(userId: string): UserStats {
+  const stats: UserStats = {
+    totalTournaments: 0,
+    totalWins: 0,
+    totalLosses: 0,
+    bestPlacement: null,
+  };
+
+  for (const [tournamentId, tournament] of tournaments.entries()) {
+    if (!tournament.finalized) continue;
+
+    const entrants = entrantsByTournament.get(tournamentId) ?? [];
+    const isEntrant = entrants.some((e) => e.userId === userId);
+    if (!isEntrant) continue;
+
+    const tournamentResults = matchResults.get(tournamentId);
+    const result = tournamentResults?.get(userId);
+    if (!result) continue;
+
+    stats.totalTournaments++;
+    stats.totalWins += result.wins;
+    stats.totalLosses += result.losses;
+
+    if (stats.bestPlacement === null || result.placement < stats.bestPlacement) {
+      stats.bestPlacement = result.placement;
+    }
+  }
+
+  return stats;
+}
+
+export function getUserHistory(
+  userId: string,
+  options?: { game?: string; page?: number; pageSize?: number }
+): { history: HistoryEntry[]; page: number; pageSize: number; total: number } {
+  const page = options?.page ?? 1;
+  const pageSize = options?.pageSize ?? 20;
+  const gameFilter = options?.game?.toLowerCase();
+
+  const allHistory: HistoryEntry[] = [];
+
+  for (const [tournamentId, tournament] of tournaments.entries()) {
+    if (!tournament.finalized) continue;
+
+    const entrants = entrantsByTournament.get(tournamentId) ?? [];
+    const isEntrant = entrants.some((e) => e.userId === userId);
+    if (!isEntrant) continue;
+
+    if (gameFilter && tournament.game.toLowerCase() !== gameFilter) continue;
+
+    const tournamentResults = matchResults.get(tournamentId);
+    const result = tournamentResults?.get(userId);
+    if (!result) continue;
+
+    allHistory.push({
+      tournamentId: tournament.id,
+      name: tournament.name,
+      game: tournament.game,
+      date: tournament.createdAt,
+      placement: result.placement,
+      wins: result.wins,
+      losses: result.losses,
+    });
+  }
+
+  // Sort by date descending
+  allHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const total = allHistory.length;
+  const startIndex = (page - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const history = allHistory.slice(startIndex, endIndex);
+
+  return { history, page, pageSize, total };
+}
+
 /** Test helper: reset all in-memory state */
 export function __resetStoreForTests(): void {
   users.clear();
@@ -301,6 +406,7 @@ export function __resetStoreForTests(): void {
   tournaments.clear();
   entrantsByTournament.clear();
   bracketsByTournament.clear();
+  matchResults.clear();
   notificationsById.clear();
   matchReadyNotificationKeys.clear();
 }

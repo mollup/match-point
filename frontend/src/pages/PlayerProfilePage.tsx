@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "../auth-context";
-import { api, type UserProfile } from "../api";
+import { api, type HistoryEntry, type UserProfile } from "../api";
 import "../styles/player-profile.css";
 
 type PageState = "loading" | "error" | "empty" | "view" | "edit";
@@ -38,6 +38,13 @@ export function PlayerProfilePage() {
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
+  // Match history state
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [selectedGame, setSelectedGame] = useState<string>("all");
+  const [availableGames, setAvailableGames] = useState<string[]>([]);
+
   const loadProfile = useCallback(async () => {
     if (!profileId) return;
     setPageState("loading");
@@ -52,6 +59,25 @@ export function PlayerProfilePage() {
     }
   }, [profileId]);
 
+  const loadHistory = useCallback(async () => {
+    if (!profileId) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const options = selectedGame !== "all" ? { game: selectedGame, pageSize: 10 } : { pageSize: 10 };
+      const data = await api.getUserHistory(profileId, options);
+      setHistory(data.history);
+
+      // Extract unique games from history for filter dropdown
+      const uniqueGames = Array.from(new Set(data.history.map((h) => h.game)));
+      setAvailableGames(uniqueGames);
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : "Failed to load history");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [profileId, selectedGame]);
+
   useEffect(() => {
     if (!ready) return;
     if (!profileId) {
@@ -61,6 +87,12 @@ export function PlayerProfilePage() {
     }
     loadProfile();
   }, [ready, profileId, loadProfile, navigate]);
+
+  useEffect(() => {
+    if (pageState === "view" || pageState === "edit") {
+      loadHistory();
+    }
+  }, [pageState, loadHistory]);
 
   function openEdit() {
     if (!profile) return;
@@ -300,6 +332,101 @@ export function PlayerProfilePage() {
                   ))}
                 </div>
               </div>
+
+              {/* Match History Section */}
+              <div className="pp-history-section">
+                <div className="pp-section-header">
+                  <h2>Match History</h2>
+                  {availableGames.length > 0 && (
+                    <select
+                      className="pp-game-filter"
+                      value={selectedGame}
+                      onChange={(e) => setSelectedGame(e.target.value)}
+                      aria-label="Filter by game"
+                    >
+                      <option value="all">All Games</option>
+                      {availableGames.map((game) => (
+                        <option key={game} value={game}>
+                          {game}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Aggregate stats */}
+                {profile.totalTournaments > 0 && (
+                  <div className="pp-history-stats">
+                    <span className="pp-stat-item">
+                      {profile.totalTournaments} tournament{profile.totalTournaments !== 1 ? "s" : ""}
+                    </span>
+                    <span className="pp-stat-separator">·</span>
+                    <span className="pp-stat-item">
+                      {profile.totalWins}-{profile.totalLosses} record
+                    </span>
+                    {profile.bestPlacement !== null && (
+                      <>
+                        <span className="pp-stat-separator">·</span>
+                        <span className="pp-stat-item">
+                          Best: {formatPlacement(profile.bestPlacement)}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Loading state */}
+                {historyLoading && (
+                  <div className="pp-history-loading">
+                    <RefreshCw size={20} className="pp-spinner" />
+                    <span>Loading history...</span>
+                  </div>
+                )}
+
+                {/* Error state */}
+                {historyError && !historyLoading && (
+                  <div className="pp-history-error">
+                    <AlertCircle size={18} />
+                    <span>{historyError}</span>
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {!historyLoading && !historyError && history.length === 0 && (
+                  <div className="pp-history-empty">
+                    <Gamepad2 size={40} strokeWidth={1} />
+                    <p>No tournament history yet — register for an event to get started</p>
+                    <Link to="/tournaments" className="pp-btn-outline">
+                      Browse Tournaments
+                    </Link>
+                  </div>
+                )}
+
+                {/* History list */}
+                {!historyLoading && !historyError && history.length > 0 && (
+                  <div className="pp-history-list">
+                    {history.map((entry) => (
+                      <div key={entry.tournamentId} className="pp-history-item">
+                        <div className="pp-history-main">
+                          <Link to={`/t/${entry.tournamentId}`} className="pp-history-name">
+                            {entry.name}
+                          </Link>
+                          <span className="pp-history-game">{entry.game}</span>
+                        </div>
+                        <div className="pp-history-meta">
+                          <span className="pp-history-date">{formatHistoryDate(entry.date)}</span>
+                          <span className="pp-history-placement">
+                            {formatPlacement(entry.placement)}
+                          </span>
+                          <span className="pp-history-record">
+                            {entry.wins}-{entry.losses}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -406,4 +533,21 @@ function formatJoinDate(isoString: string): string {
   } catch {
     return "";
   }
+}
+
+function formatHistoryDate(isoString: string): string {
+  try {
+    return new Date(isoString).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
+
+function formatPlacement(placement: number): string {
+  const suffix = placement === 1 ? "st" : placement === 2 ? "nd" : placement === 3 ? "rd" : "th";
+  return `${placement}${suffix}`;
 }
