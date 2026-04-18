@@ -24,10 +24,19 @@ export interface TournamentSummary {
   maxEntrants: number | null;
   registrationOpen: boolean;
   createdAt: string;
+  checkInClosed: boolean;
+}
+
+export interface EntrantRecord {
+  userId: string;
+  displayName: string;
+  gameSelection: string;
+  registeredAt: string;
+  checkedIn: boolean;
 }
 
 export interface TournamentDetail extends TournamentSummary {
-  entrants: { userId: string; displayName: string; gameSelection: string; registeredAt: string }[];
+  entrants: EntrantRecord[];
 }
 
 export interface BracketPlayer {
@@ -166,9 +175,38 @@ export const api = {
   ): Promise<{
     tournamentId: string;
     count: number;
-    entrants: { userId: string; displayName: string; gameSelection: string; registeredAt: string }[];
+    entrants: EntrantRecord[];
   }> {
     return request(`/api/tournaments/${tournamentId}/entrants`, { auth: false });
+  },
+
+  checkInEntrant(tournamentId: string, entrantId: string): Promise<EntrantRecord> {
+    return request(`/api/tournaments/${tournamentId}/checkin/${entrantId}`, {
+      method: "POST",
+      headers: jsonHeaders,
+    });
+  },
+
+  uncheckInEntrant(tournamentId: string, entrantId: string): Promise<EntrantRecord> {
+    return request(`/api/tournaments/${tournamentId}/checkin/${entrantId}`, {
+      method: "DELETE",
+    });
+  },
+
+  closeCheckIn(
+    tournamentId: string
+  ): Promise<{
+    id: string;
+    name: string;
+    game: string;
+    maxEntrants: number | null;
+    registrationOpen: boolean;
+    checkInClosed: boolean;
+  }> {
+    return request(`/api/tournaments/${tournamentId}/checkin/close`, {
+      method: "POST",
+      headers: jsonHeaders,
+    });
   },
 
   generateBracket(tournamentId: string): Promise<BracketResponse> {

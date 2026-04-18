@@ -4,12 +4,14 @@ import { BracketValidationError, buildSingleEliminationBracket } from "../bracke
 import type { BracketPlayer } from "../types.js";
 import {
   addEntrant,
+  closeCheckIn,
   createTournament,
   getEntrants,
   getTournament,
   getTournamentBracket,
   getUserById,
   listTournaments,
+  setEntrantCheckedIn,
   setTournamentBracket,
   updateTournament,
 } from "../store.js";
@@ -30,6 +32,7 @@ router.get("/", (_req, res) => {
     maxEntrants: t.maxEntrants,
     registrationOpen: t.registrationOpen,
     createdAt: t.createdAt,
+    checkInClosed: t.checkInClosed,
   }));
   res.json(items);
 });
@@ -137,6 +140,7 @@ router.post("/:id/register", requireAuth, (req: AuthedRequest, res) => {
     displayName: parsed.data.displayName,
     gameSelection: parsed.data.gameSelection,
     registeredAt: new Date().toISOString(),
+    checkedIn: false,
   };
   addEntrant(tournament.id, entrant);
 
@@ -169,9 +173,103 @@ router.get("/:id/entrants", (req, res) => {
       displayName: e.displayName,
       gameSelection: e.gameSelection,
       registeredAt: e.registeredAt,
+      checkedIn: e.checkedIn,
     }));
   res.json({ tournamentId: tournament.id, count: entrants.length, entrants });
 });
+
+/* ------------------------------------------------------------------ */
+/*  POST /api/tournaments/:id/checkin/close – close check-in window    */
+/* ------------------------------------------------------------------ */
+router.post(
+  "/:id/checkin/close",
+  requireAuth,
+  requireOrganizer,
+  (req: AuthedRequest, res) => {
+    const tournament = getTournament(req.params.id);
+    if (!tournament) {
+      res.status(404).json({ error: "Tournament not found" });
+      return;
+    }
+    if (tournament.checkInClosed) {
+      res.status(409).json({ error: "Check-in is already closed" });
+      return;
+    }
+    const updated = closeCheckIn(tournament.id);
+    res.status(200).json({
+      id: updated!.id,
+      name: updated!.name,
+      game: updated!.game,
+      maxEntrants: updated!.maxEntrants,
+      registrationOpen: updated!.registrationOpen,
+      checkInClosed: updated!.checkInClosed,
+    });
+  }
+);
+
+/* ------------------------------------------------------------------ */
+/*  POST /api/tournaments/:id/checkin/:entrantId – mark present       */
+/* ------------------------------------------------------------------ */
+router.post(
+  "/:id/checkin/:entrantId",
+  requireAuth,
+  requireOrganizer,
+  (req: AuthedRequest, res) => {
+    const tournament = getTournament(req.params.id);
+    if (!tournament) {
+      res.status(404).json({ error: "Tournament not found" });
+      return;
+    }
+    if (tournament.checkInClosed) {
+      res.status(409).json({ error: "Check-in is closed for this tournament" });
+      return;
+    }
+    const entrant = setEntrantCheckedIn(tournament.id, req.params.entrantId, true);
+    if (!entrant) {
+      res.status(404).json({ error: "Entrant not found" });
+      return;
+    }
+    res.status(200).json({
+      userId: entrant.userId,
+      displayName: entrant.displayName,
+      gameSelection: entrant.gameSelection,
+      registeredAt: entrant.registeredAt,
+      checkedIn: entrant.checkedIn,
+    });
+  }
+);
+
+/* ------------------------------------------------------------------ */
+/*  DELETE /api/tournaments/:id/checkin/:entrantId – reverse check-in */
+/* ------------------------------------------------------------------ */
+router.delete(
+  "/:id/checkin/:entrantId",
+  requireAuth,
+  requireOrganizer,
+  (req: AuthedRequest, res) => {
+    const tournament = getTournament(req.params.id);
+    if (!tournament) {
+      res.status(404).json({ error: "Tournament not found" });
+      return;
+    }
+    if (tournament.checkInClosed) {
+      res.status(409).json({ error: "Check-in is closed for this tournament" });
+      return;
+    }
+    const entrant = setEntrantCheckedIn(tournament.id, req.params.entrantId, false);
+    if (!entrant) {
+      res.status(404).json({ error: "Entrant not found" });
+      return;
+    }
+    res.status(200).json({
+      userId: entrant.userId,
+      displayName: entrant.displayName,
+      gameSelection: entrant.gameSelection,
+      registeredAt: entrant.registeredAt,
+      checkedIn: entrant.checkedIn,
+    });
+  }
+);
 
 /* ------------------------------------------------------------------ */
 /*  PATCH /api/tournaments/:id – update registration status           */
@@ -233,10 +331,18 @@ router.post("/:id/bracket", requireAuth, requireOrganizer, (req: AuthedRequest, 
   if (parsed.data?.players?.length) {
     players = parsed.data.players;
   } else {
-    players = getEntrants(tournament.id).map((e) => ({
-      userId: e.userId,
-      displayName: e.displayName,
-    }));
+    if (!tournament.checkInClosed) {
+      res
+        .status(409)
+        .json({ error: "Check-in must be closed before generating the bracket" });
+      return;
+    }
+    players = getEntrants(tournament.id)
+      .filter((e) => e.checkedIn)
+      .map((e) => ({
+        userId: e.userId,
+        displayName: e.displayName,
+      }));
   }
 
   try {
@@ -264,6 +370,7 @@ router.get("/:id", (req, res) => {
     displayName: e.displayName,
     gameSelection: e.gameSelection,
     registeredAt: e.registeredAt,
+    checkedIn: e.checkedIn,
   }));
   res.json({
     id: tournament.id,
@@ -273,6 +380,7 @@ router.get("/:id", (req, res) => {
     registrationOpen: tournament.registrationOpen,
     entrantCount: entrants.length,
     createdAt: tournament.createdAt,
+    checkInClosed: tournament.checkInClosed,
     entrants,
   });
 });

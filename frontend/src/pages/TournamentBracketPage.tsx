@@ -7,42 +7,42 @@ import "../styles/bracket-view-page.css";
 
 type OutletCtx = { setCurrentEventTitle: (t: string | null) => void };
 
-function hashStr(s: string): number {
+export function hashStr(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return h;
 }
 
-function mockScores(matchId: string): [number, number] {
+export function mockScores(matchId: string): [number, number] {
   const h = hashStr(matchId);
   if (h % 3 === 0) return [2, 0];
   if (h % 3 === 1) return [2, 1];
   return [1, 2];
 }
 
-function winner1Wins(matchId: string): boolean {
+export function winner1Wins(matchId: string): boolean {
   return hashStr(matchId) % 2 === 0;
 }
 
-function roundLabel(round: number, totalRounds: number): string {
+export function roundLabel(round: number, totalRounds: number): string {
   if (round === totalRounds) return "Grand finals";
   if (round === totalRounds - 1 && totalRounds >= 2) return "Semi finals";
   if (round === totalRounds - 2 && totalRounds >= 3) return "Quarter finals";
   return `Round ${round}`;
 }
 
-function formatEventCode(id: string): string {
+export function formatEventCode(id: string): string {
   const compact = id.replace(/-/g, "").slice(0, 6).toUpperCase();
   const y = new Date().getFullYear();
   return `MP-${y}-${compact.slice(0, 3)}`;
 }
 
-function displayUrl(id: string): string {
+export function displayUrl(id: string): string {
   if (typeof window === "undefined") return "";
   return `${window.location.origin}/t/${id}/bracket`;
 }
 
-function feederHint(round: number, matchSlot: number, side: 1 | 2): string | null {
+export function feederHint(round: number, matchSlot: number, side: 1 | 2): string | null {
   if (round <= 1) return null;
   const k = side === 1 ? 2 * matchSlot - 1 : 2 * matchSlot;
   return `(Match ${k} winner)`;
@@ -56,7 +56,7 @@ type SlotDisplay = {
   hint: string | null;
 };
 
-function buildSlotDisplays(
+export function buildSlotDisplays(
   m: BracketMatch,
   round: number,
   matchSlot: number,
@@ -205,14 +205,14 @@ function MatchCard({
   return <div className="bv-match">{inner}</div>;
 }
 
-function pickLiveMatchId(bracket: BracketResponse): string | null {
+export function pickLiveMatchId(bracket: BracketResponse): string | null {
   const r1 = bracket.rounds[0];
   if (!r1) return null;
   const live = r1.matches.find((m) => m.player1 && m.player2);
   return live?.id ?? null;
 }
 
-function nextMatchLabel(bracket: BracketResponse, liveId: string | null): string {
+export function nextMatchLabel(bracket: BracketResponse, liveId: string | null): string {
   if (!liveId) return "Bracket is warming up — check back soon.";
   for (const r of bracket.rounds) {
     const m = r.matches.find((x) => x.id === liveId);

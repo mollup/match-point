@@ -29,6 +29,7 @@ export interface Tournament {
   maxEntrants: number | null;
   registrationOpen: boolean;
   createdAt: string;
+  checkInClosed: boolean;
 }
 
 export interface Entrant {
@@ -36,6 +37,7 @@ export interface Entrant {
   displayName: string;
   gameSelection: string;
   registeredAt: string;
+  checkedIn: boolean;
 }
 
 export interface BracketPlayer {
