@@ -14,6 +14,13 @@ import { useAuth } from "../src/auth-context";
 
 vi.mock("../src/auth-context", () => ({ useAuth: vi.fn() }));
 
+vi.mock("../src/api", () => ({
+  api: {
+    getMatchCallNotifications: vi.fn(() => Promise.resolve([])),
+    ackMatchCallNotification: vi.fn(() => Promise.resolve({ ok: true })),
+  },
+}));
+
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-router-dom")>();

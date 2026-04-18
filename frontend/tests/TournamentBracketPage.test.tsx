@@ -209,6 +209,9 @@ function makeMatch(overrides: Partial<BracketMatch> = {}): BracketMatch {
     player1: null,
     player2: null,
     advancesToMatchId: null,
+    status: "pending",
+    winnerUserId: null,
+    stationLabel: null,
     ...overrides,
   };
 }

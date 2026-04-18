@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -12,6 +12,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { api, type MatchCallNotificationDTO } from "../api";
 import { useAuth } from "../auth-context";
 import "../styles/bracket-view-page.css";
 import "../styles/dashboard.css";
@@ -43,6 +44,9 @@ export function DashboardLayout({ children }: { children?: ReactNode }) {
   const location = useLocation();
   const [currentEventTitle, setCurrentEventTitle] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const [matchNotifs, setMatchNotifs] = useState<MatchCallNotificationDTO[]>([]);
+  const notifyWrapRef = useRef<HTMLDivElement | null>(null);
 
   const isPublicBracketRoute = /\/t\/[^/]+\/bracket\/?$/.test(location.pathname);
   const isTournamentRoute = location.pathname.startsWith("/tournament");
@@ -100,6 +104,33 @@ export function DashboardLayout({ children }: { children?: ReactNode }) {
   }
 
   const isGuest = !user && isPublicBracketRoute;
+
+  const refreshMatchNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      const items = await api.getMatchCallNotifications(user.id);
+      setMatchNotifs(items);
+    } catch {
+      /* non-blocking */
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    void refreshMatchNotifications();
+    const t = window.setInterval(() => void refreshMatchNotifications(), 45_000);
+    return () => window.clearInterval(t);
+  }, [user, refreshMatchNotifications]);
+
+  useEffect(() => {
+    if (!notifyOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const el = notifyWrapRef.current;
+      if (el && e.target instanceof Node && !el.contains(e.target)) setNotifyOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [notifyOpen]);
 
   const initials = isGuest
     ? "?"
@@ -231,10 +262,73 @@ export function DashboardLayout({ children }: { children?: ReactNode }) {
               <Search size={18} color="#94a3b8" />
               <input type="search" placeholder={searchPlaceholder} readOnly aria-label="Search" />
             </div>
-            <button type="button" className="dashboard-icon-btn" aria-label="Notifications">
-              <Bell size={20} />
-              <span className="dashboard-notify-dot" />
-            </button>
+            <div className="dashboard-notify-wrap" ref={notifyWrapRef}>
+              <button
+                type="button"
+                className="dashboard-icon-btn"
+                aria-label="Match notifications"
+                aria-expanded={notifyOpen}
+                onClick={() => {
+                  setNotifyOpen((o) => !o);
+                  void refreshMatchNotifications();
+                }}
+              >
+                <Bell size={20} />
+                {!isGuest && matchNotifs.length > 0 ? <span className="dashboard-notify-dot" /> : null}
+              </button>
+              {notifyOpen && !isGuest ? (
+                <div className="dashboard-notify-panel" role="dialog" aria-label="Match call notifications">
+                  <div className="dashboard-notify-panel-head">Your match is ready</div>
+                  {matchNotifs.length === 0 ? (
+                    <p className="dashboard-notify-empty">No open match calls.</p>
+                  ) : (
+                    <ul className="dashboard-notify-list">
+                      {matchNotifs.map((n) => (
+                        <li key={n.id} className="dashboard-notify-item">
+                          <div className="dashboard-notify-item-body">
+                            <strong>
+                              Round {n.round} vs {n.opponentDisplayName}
+                            </strong>
+                            {n.stationLabel ? (
+                              <span className="dashboard-notify-station">{n.stationLabel}</span>
+                            ) : null}
+                            <span className="dashboard-notify-time">
+                              {new Date(n.createdAt).toLocaleTimeString([], {
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                          <div className="dashboard-notify-item-actions">
+                            <Link
+                              to={`/t/${n.tournamentId}/bracket`}
+                              className="dashboard-notify-link"
+                              onClick={() => setNotifyOpen(false)}
+                            >
+                              Open bracket
+                            </Link>
+                            <button
+                              type="button"
+                              className="dashboard-notify-dismiss"
+                              onClick={async () => {
+                                try {
+                                  await api.ackMatchCallNotification(n.id);
+                                  await refreshMatchNotifications();
+                                } catch {
+                                  /* ignore */
+                                }
+                              }}
+                            >
+                              Got it
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+            </div>
             {!isGuest && user?.role === "organizer" ? (
               <Link to="/tournament?create=1" className="dashboard-btn-primary">
                 <Plus size={18} />

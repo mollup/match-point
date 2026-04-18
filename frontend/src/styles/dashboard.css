@@ -250,6 +250,113 @@
   border: 2px solid #fff;
 }
 
+.dashboard-notify-wrap {
+  position: relative;
+}
+
+.dashboard-notify-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(360px, calc(100vw - 2rem));
+  max-height: min(420px, 70vh);
+  overflow: auto;
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+  z-index: 40;
+  padding: 0.75rem 0;
+}
+
+.dashboard-notify-panel-head {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dash-brand);
+  padding: 0 1rem 0.5rem;
+  border-bottom: 1px solid var(--dash-border);
+  margin-bottom: 0.35rem;
+}
+
+.dashboard-notify-empty {
+  font-size: 0.875rem;
+  padding: 0.75rem 1rem 0.25rem;
+  margin: 0;
+  color: var(--dash-muted);
+}
+
+.dashboard-notify-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dashboard-notify-item {
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.dashboard-notify-item:last-child {
+  border-bottom: none;
+}
+
+.dashboard-notify-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.875rem;
+}
+
+.dashboard-notify-item-body strong {
+  font-weight: 600;
+  color: var(--dash-text);
+}
+
+.dashboard-notify-station {
+  font-size: 0.8rem;
+  color: var(--dash-muted);
+}
+
+.dashboard-notify-time {
+  font-size: 0.75rem;
+  color: var(--dash-muted);
+}
+
+.dashboard-notify-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.dashboard-notify-link {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--dash-brand);
+  text-decoration: none;
+}
+
+.dashboard-notify-link:hover {
+  text-decoration: underline;
+}
+
+.dashboard-notify-dismiss {
+  font-size: 0.8rem;
+  border: none;
+  background: #f1f5f9;
+  color: var(--dash-text);
+  padding: 0.35rem 0.65rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.dashboard-notify-dismiss:hover {
+  background: #e2e8f0;
+}
+
 .dashboard-btn-primary {
   display: inline-flex;
   align-items: center;
